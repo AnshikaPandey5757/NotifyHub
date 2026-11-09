@@ -1,0 +1,17 @@
+{
+  "name": "notifyhub",
+  "version": "1.0.0",
+  "description": "NotifyHub — campus notification system (DBMS project, PostgreSQL)",
+  "main": "server.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NotifyHub</title>
+<script>
+  // Apply the saved theme before the page paints (no flash). Falls back to the system setting.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('notifyhub-theme'); } catch (e) {}
+    var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+  /* Light theme: soft parchment */
+  :root {
+    --paper: #fbf8f1; --panel: #fffefa; --sunk: #f3eee3; --ink: #1f1d19; --ink-2: #4b4740; --muted: #857e70;
+    --rule: #ebe5d8; --rule-2: #dcd4c3;
+    --accent: #c8442b; --accent-soft: #f7e5dc;
+    --p-urgent: #c8442b; --p-high: #b0701a; --p-normal: #36598f; --p-low: #8b8476;
+    --ok: #2f6f4f; --ok-soft: #e3efe5; --bad: #b33a26; --bad-soft: #f8e4dd;
+    --code-bg: #1e1d1a; --code-ink: #ebe7dc; --code-muted: #8d877b;
+    --shadow: 0 1px 2px rgba(60, 48, 24, .05), 0 0 0 1px var(--rule);
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --tabbar-h: 0px;
+    color-scheme: light;
+  }
+  /* Dark theme: follows the system unless the toggle forces light */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #151412; --panel: #1c1b18; --sunk: #24231f; --ink: #ece8df; --ink-2: #bdb8ad; --muted: #8a857a;
+      --rule: #2e2c28; --rule-2: #3d3a35;
+      --accent: #e0644a; --accent-soft: #3a231c;
+      --p-urgent: #e0644a; --p-high: #d9a04a; --p-normal: #86a3d6; --p-low: #8a857a;
+      --ok: #86c29e; --ok-soft: #1c2c22; --bad: #ee8b75; --bad-soft: #3a201a;
+      --code-bg: #0f0e0d; --code-ink: #e6e2d8;
+      --shadow: 0 0 0 1px var(--rule);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #151412; --panel: #1c1b18; --sunk: #24231f; --ink: #ece8df; --ink-2: #bdb8ad; --muted: #8a857a;
+    --rule: #2e2c28; --rule-2: #3d3a35;
+    --accent: #e0644a; --accent-soft: #3a231c;
+    --p-urgent: #e0644a; --p-high: #d9a04a; --p-normal: #86a3d6; --p-low: #8a857a;
+    --ok: #86c29e; --ok-soft: #1c2c22; --bad: #ee8b75; --bad-soft: #3a201a;
+    --code-bg: #0f0e0d; --code-ink: #e6e2d8;
+    --shadow: 0 0 0 1px var(--rule);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .92em; }
+
+  /* ---------- shell ---------- */
+  .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; padding: 24px 14px 18px;
+    border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 10px; font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; }
+  .brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+  .theme-toggle {
+    margin-left: auto; width: 34px; height: 34px; flex: none; display: grid; place-items: center;
+    border: 1px solid var(--rule-2); border-radius: 8px; background: var(--panel); color: var(--ink-2); cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--ink); background: var(--sunk); }
+  .theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .theme-toggle .sun { display: none; }
+  :root[data-theme="dark"] .theme-toggle .sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .moon { display: none; }
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav button {
+    display: flex; align-items: center; gap: 11px; padding: 8px 10px; border: 0; border-radius: 7px;
+    background: none; color: var(--ink-2); font-weight: 500; cursor: pointer; text-align: left; white-space: nowrap;
+  }
+  .nav button:hover { background: var(--sunk); color: var(--ink); }
+  .nav button[aria-current="page"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+  .nav svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .nav .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; text-align: center; line-height: 18px; }
+  .nav .count:empty { display: none; }
+  .nav .short { display: none; }
+  .identity { margin-top: auto; padding: 16px 10px 0; border-top: 1px solid var(--rule); }
+  .identity .eyebrow { margin-bottom: 6px; }
+
+  main { min-width: 0; width: 100%; max-width: 1180px; padding: 40px 48px 72px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .page-head { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 16px 24px; margin-bottom: 28px; }
+  .page-head h1 { margin: 0; font: 500 36px/1.1 var(--serif); letter-spacing: -.02em; }
+  .page-head p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+  .page-head .actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+
+  /* ---------- surfaces ---------- */
+  .panel { background: var(--panel); border-radius: 10px; box-shadow: var(--shadow); }
+  .panel + .panel, .grid + .panel, .panel + .grid { margin-top: 20px; }
+  .panel-head { display: flex; align-items: baseline; gap: 12px; padding: 16px 20px 0; }
+  .panel-head h2 { margin: 0; font: 600 15px var(--sans); }
+  .panel-head .mono { margin-left: auto; color: var(--muted); }
+  .panel-body { padding: 16px 20px 20px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .stack > * + * { margin-top: 20px; }
+
+  /* ---------- controls ---------- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 7px;
+    border: 1px solid transparent; background: var(--ink); color: var(--paper); font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { opacity: .88; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.secondary { background: var(--panel); color: var(--ink); border-color: var(--rule-2); }
+  .btn.secondary:hover { background: var(--sunk); opacity: 1; }
+  .btn kbd { font: 500 11px var(--mono); opacity: .6; }
+
+  .field + .field { margin-top: 18px; }
+  .field > label, .field > .label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; }
+  .field .hint { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+  .input, select.input, textarea.input {
+    width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--rule-2); border-radius: 7px; background: var(--panel);
+    transition: border-color .15s;
+  }
+  textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+  .input:hover { border-color: var(--muted); }
+  .input:focus { outline: none; border-color: var(--ink); }
+  select.input {
+    appearance: none; padding-right: 32px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 17px) 16px, calc(100% - 12px) 16px; background-size: 5px 5px; background-repeat: no-repeat;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunk); border-radius: 8px; }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented label { padding: 5px 12px; border-radius: 6px; font-weight: 500; font-size: 13px; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .segmented input:checked + label { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 0 0 1px var(--rule); }
+  .segmented input:focus-visible + label { outline: 2px solid var(--accent); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip span {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--rule-2); border-radius: 999px;
+    cursor: pointer; font-weight: 500; font-size: 13px; transition: background .15s, border-color .15s;
+  }
+  .chip span em { font-style: normal; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chip span:hover { border-color: var(--muted); }
+  .chip input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .chip input:checked + span em { color: inherit; opacity: .65; }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .switch-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; cursor: pointer; }
+  .switch-row + .switch-row { border-top: 1px solid var(--rule); }
+  .switch-row .name { flex: 1; min-width: 0; }
+  .switch-row .name small { display: block; color: var(--muted); font-size: 12px; }
+  .switch { position: relative; width: 34px; height: 20px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--rule-2); transition: background .15s; pointer-events: none; }
+  .switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s; }
+  .switch input:checked + i { background: var(--ok); }
+  .switch input:checked + i::after { transform: translateX(14px); }
+  .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .prio { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: capitalize; color: var(--p, var(--muted)); }
+  .prio::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .p-urgent { --p: var(--p-urgent); } .p-high { --p: var(--p-high); } .p-normal { --p: var(--p-normal); } .p-low { --p: var(--p-low); }
+
+  .notice { display: none; margin-top: 16px; padding: 11px 14px; border-radius: 7px; font-size: 13.5px; }
+  .notice.ok { display: block; background: var(--ok-soft); color: var(--ok); }
+  .notice.bad { display: block; background: var(--bad-soft); color: var(--bad); }
+
+  /* ---------- inbox ---------- */
+  .group-label { padding: 18px 20px 8px; }
+  .group-label:first-child { padding-top: 14px; }
+  .note {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px;
+    padding: 14px 20px 14px 24px; border-top: 1px solid var(--rule);
+  }
+  .note::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--p); opacity: 0; }
+  .note.unread { cursor: pointer; }
+  .note.unread::before { opacity: 1; }
+  .note.unread:hover { background: var(--sunk); }
+  .note h3 { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.4; }
+  .note.unread h3 { font-weight: 600; }
+  .note p { margin: 2px 0 0; color: var(--ink-2); }
+  .note.read h3, .note.read p { color: var(--muted); }
+  .note .meta { grid-column: 1; margin-top: 6px; font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .note .meta b { font-weight: 500; color: var(--ink-2); }
+  .note .side { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; text-align: right; }
+  .note .side time { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .note .mark { opacity: 0; border: 0; background: none; padding: 0; color: var(--accent); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .note.unread:hover .mark, .note .mark:focus-visible { opacity: 1; }
+  .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+  .empty strong { display: block; margin-bottom: 4px; font: 500 20px var(--serif); color: var(--ink); }
+
+  /* ---------- send preview ---------- */
+  .preview { border: 1px dashed var(--rule-2); border-radius: 8px; overflow: hidden; }
+  .preview .note { border-top: 0; }
+  .reach { display: flex; align-items: baseline; gap: 8px; }
+  .reach b { font: 500 32px/1 var(--serif); font-variant-numeric: tabular-nums; }
+
+  /* ---------- analytics ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .kpi { padding: 20px 22px; }
+  .kpi + .kpi { border-left: 1px solid var(--rule); }
+  .kpi .v { font: 500 34px/1.1 var(--serif); font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin-top: 6px; }
+  .kpi .v small { font-size: 20px; color: var(--muted); }
+
+  .table-wrap { overflow: auto; }
+  .table-wrap.tall { max-height: 560px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 20px 9px 0; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { padding-left: 20px; }
+  th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--sunk); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rate { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; }
+  .rate .track { width: 96px; height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+  .rate .track i { display: block; height: 100%; background: var(--ink); }
+  td.empty-cell { padding: 32px 20px; color: var(--muted); text-align: center; }
+
+  /* ---------- SQL ---------- */
+  .editor { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; overflow: hidden; }
+  .editor-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+  .editor-bar select.input { width: auto; min-width: 0; max-width: 100%; flex: 1 1 280px; height: 34px; background-color: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); color: var(--code-ink); }
+  .editor-bar select.input option { color: #1c1b18; background: #fff; }
+  .editor-bar .switch-row { padding: 0; color: var(--code-muted); font-size: 13px; }
+  .editor-bar .btn { background: var(--accent); color: #fff; margin-left: auto; }
+  #sql {
+    display: block; width: 100%; min-height: 220px; padding: 16px 18px; border: 0; resize: vertical;
+    background: transparent; color: var(--code-ink); font: 13px/1.65 var(--mono); tab-size: 2;
+  }
+  #sql:focus { outline: none; }
+  .editor-foot { padding: 8px 18px; border-top: 1px solid rgba(255, 255, 255, .08); color: var(--code-muted); font-size: 12px; }
+  .status-line { display: flex; gap: 14px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .status-line.bad { color: var(--bad); background: var(--bad-soft); border-radius: 10px 10px 0 0; }
+  .status-line .tag { font: 600 11px var(--mono); padding: 2px 7px; border-radius: 4px; background: var(--sunk); color: var(--ink-2); }
+  #sqlResult td { font-family: var(--mono); font-size: 12.5px; }
+  .null { color: var(--muted); font-style: italic; }
+
+  /* ---------- audit ---------- */
+  .op { font: 600 11px var(--mono); padding: 2px 7px; border-radius: 4px; }
+  .op-INSERT { background: var(--ok-soft); color: var(--ok); }
+  .op-UPDATE { background: var(--sunk); color: var(--p-normal); }
+  .op-DELETE { background: var(--bad-soft); color: var(--bad); }
+  .details { color: var(--muted); font-family: var(--mono); font-size: 12px; max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 10; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 8px;
+    background: var(--ink); color: var(--paper); font-size: 13.5px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1020px) {
+    main { padding: 32px 28px 64px; }
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi:nth-child(3) { border-left: 0; }
+    .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  }
+  @media (max-width: 760px) {
+    :root { --tabbar-h: 62px; }
+    .app { grid-template-columns: minmax(0, 1fr); }
+
+    /* Header: brand + theme toggle, then the "viewing as" picker */
+    .sidebar { position: static; min-width: 0; height: auto; padding: 14px 16px; gap: 12px; border-right: 0; border-bottom: 1px solid var(--rule); }
+    .brand { padding: 0; font-size: 21px; }
+    .identity { margin: 0; padding: 0; border: 0; display: flex; align-items: center; gap: 10px; }
+    .identity .eyebrow { margin: 0; white-space: nowrap; }
+    .identity select { flex: 1; min-width: 0; width: auto; }
+
+    /* Navigation becomes a fixed bottom tab bar with all 5 sections visible */
+    .nav {
+      position: fixed; z-index: 20; left: 0; right: 0; bottom: 0;
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+      padding: 0 4px env(safe-area-inset-bottom); background: var(--panel); border-top: 1px solid var(--rule);
+    }
+    .nav button {
+      position: relative; flex-direction: column; justify-content: center; gap: 3px; height: var(--tabbar-h);
+      padding: 0 2px; border-radius: 0; font-size: 11px; font-weight: 500; color: var(--muted); text-align: center; min-width: 0;
+    }
+    .nav button:hover { background: none; }
+    .nav button[aria-current="page"] { background: none; box-shadow: none; color: var(--accent); }
+    .nav svg { width: 21px; height: 21px; }
+    .nav .full { display: none; }
+    .nav .short { display: inline; }
+    .nav .count { position: absolute; top: 7px; left: calc(50% + 6px); margin: 0; min-width: 17px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+
+    main { padding: 24px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom)); }
+    .toast { bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom)); }
+    .page-head { margin-bottom: 20px; }
+    .page-head h1 { font-size: 30px; }
+    .page-head .actions { margin-left: 0; width: 100%; }
+    .page-head .actions .btn { margin-left: auto; }
+    .grid, .row2 { grid-template-columns: minmax(0, 1fr); }
+    .input, select.input, textarea.input, #sql { font-size: 16px; }   /* stops iOS zooming into fields */
+    #priority { display: grid; grid-template-columns: repeat(4, 1fr); width: 100%; }
+    #priority label { justify-content: center; }
+    .editor-bar select.input { flex-basis: 100%; }
+    .editor-bar .btn { margin-left: auto; }
+    .status-line { flex-wrap: wrap; gap: 6px 12px; }
+    .status-line span[style] { margin-left: 0 !important; width: 100%; }
+    .note { padding: 14px 16px 14px 20px; grid-template-columns: 1fr; }
+    .note .side { grid-row: auto; grid-column: 1; flex-direction: row; align-items: center; gap: 12px; margin-top: 4px; }
+    .note .mark { opacity: 1; margin-left: auto; }
+    .panel-head, .panel-body { padding-left: 16px; padding-right: 16px; }
+    th:first-child, td:first-child { padding-left: 16px; }
+    .kpi { padding: 16px; }
+    .kpi .v { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <i></i>NotifyHub
+      <button class="theme-toggle" id="themeToggle" aria-label="Switch to dark mode" title="Switch theme">
+        <svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <button data-view="inbox" aria-current="page">
+        <svg viewBox="0 0 24 24"><path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5.5 5h13L21 13v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z"/></svg>
+        Inbox <span class="count" id="navUnread"></span>
+      </button>
+      <button data-view="send">
+        <svg viewBox="0 0 24 24"><path d="M4 12 20 4l-4 16-4-7z"/><path d="m12 13 8-9"/></svg>
+        Compose
+      </button>
+      <button data-view="stats">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span class="full">Analytics</span><span class="short">Stats</span>
+      </button>
+      <button data-view="sqltab">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>
+        <span class="full">SQL Playground</span><span class="short">SQL</span>
+      </button>
+      <button data-view="audit">
+        <svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+        <span class="full">Audit Log</span><span class="short">Audit</span>
+      </button>
+    </nav>
+    <div class="identity">
+      <div class="eyebrow">Viewing as</div>
+      <select class="input" id="inboxUser" aria-label="Viewing as"></select>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ================= INBOX ================= -->
+    <section id="inbox" class="view active">
+      <div class="page-head">
+        <div>
+          <h1>Inbox</h1>
+          <p id="inboxSub">Loading…</p>
+        </div>
+        <div class="actions">
+          <div class="segmented" role="radiogroup" aria-label="Filter">
+            <input type="radio" name="filter" id="fAll" value="all" checked><label for="fAll">All</label>
+            <input type="radio" name="filter" id="fUnread" value="unread"><label for="fUnread">Unread</label>
+          </div>
+          <button class="btn secondary" id="readAll" title="Runs CALL mark_all_read(user_id)">Mark all read</button>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel" id="inboxList" aria-live="polite"></div>
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-head"><h2>Subscriptions</h2></div>
+            <div class="panel-body" id="subsList"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Delivery</h2></div>
+            <div class="panel-body">
+              <label class="switch-row">
+                <span class="name">In-app notifications<small>Urgent notices still come through when muted.</small></span>
+                <span class="switch"><input type="checkbox" id="inApp"><i></i></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= COMPOSE ================= -->
+    <section id="send" class="view">
+      <div class="page-head">
+        <div>
+          <h1>Compose</h1>
+          <p>Post to one or more categories. Every category is sent in a single transaction, so if one fails, nothing is sent.</p>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <div class="panel-body">
+            <div class="field">
+              <label for="sender">From</label>
+              <select class="input" id="sender"></select>
+              <div class="hint">Students can't post. Pick one to watch <code>trg_check_sender_role</code> reject it.</div>
+            </div>
+            <div class="field">
+              <div class="label">Categories</div>
+              <div class="chips" id="sendCats"></div>
+            </div>
+            <div class="field">
+              <label for="title">Title</label>
+              <input class="input" type="text" id="title" maxlength="200" placeholder="DBMS lab moved to Lab 3">
+            </div>
+            <div class="field">
+              <label for="body">Message</label>
+              <textarea class="input" id="body" rows="5" placeholder="Add the details people need."></textarea>
+            </div>
+            <div class="field row2">
+              <div>
+                <div class="label">Priority</div>
+                <div class="segmented" id="priority" role="radiogroup" aria-label="Priority">
+                  <input type="radio" name="prio" id="prLow" value="low"><label for="prLow">Low</label>
+                  <input type="radio" name="prio" id="prNormal" value="normal" checked><label for="prNormal">Normal</label>
+                  <input type="radio" name="prio" id="prHigh" value="high"><label for="prHigh">High</label>
+                  <input type="radio" name="prio" id="prUrgent" value="urgent"><label for="prUrgent">Urgent</label>
+                </div>
+              </div>
+              <div>
+                <label for="expires" class="label">Expires <span class="muted">(optional)</span></label>
+                <input class="input" type="datetime-local" id="expires">
+              </div>
+            </div>
+            <div class="field" style="margin-top:24px">
+              <button class="btn" id="sendBtn">Send notification</button>
+            </div>
+            <div id="sendMsg" class="notice" role="status"></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-head"><h2>Reach</h2></div>
+            <div class="panel-body">
+              <div class="reach"><b id="reachNum">0</b><span class="muted">subscribers at most</span></div>
+              <div class="muted" style="font-size:12.5px;margin-top:6px">People in several categories get it once per category.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Preview</h2></div>
+            <div class="panel-body"><div class="preview" id="preview"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ANALYTICS ================= -->
+    <section id="stats" class="view">
+      <div class="page-head">
+        <div>
+          <h1>Analytics</h1>
+          <p>Engagement numbers computed live from the database views.</p>
+        </div>
+      </div>
+      <div class="panel kpis" id="kpis"></div>
+      <div class="panel">
+        <div class="panel-head"><h2>Categories</h2><span class="mono">category_stats</span></div>
+        <div class="table-wrap" style="margin-top:12px"><table id="catTable"></table></div>
+      </div>
+      <div class="grid">
+        <div class="panel">
+          <div class="panel-head"><h2>Departments</h2><span class="mono">dept_engagement</span></div>
+          <div class="table-wrap" style="margin-top:12px"><table id="deptTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Time to read, by priority</h2></div>
+          <div class="table-wrap" style="margin-top:12px"><table id="prioTable"></table></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Senders</h2><span class="mono">sender_stats</span></div>
+        <div class="table-wrap" style="margin-top:12px"><table id="senderTable"></table></div>
+      </div>
+    </section>
+
+    <!-- ================= SQL ================= -->
+    <section id="sqltab" class="view">
+      <div class="page-head">
+        <div>
+          <h1>SQL Playground</h1>
+          <p>Queries run in <code>BEGIN READ ONLY … ROLLBACK</code> unless you allow writes. One statement at a time, and schema changes are blocked.</p>
+        </div>
+      </div>
+      <div class="editor">
+        <div class="editor-bar">
+          <select class="input" id="preset" aria-label="Example queries"></select>
+          <label class="switch-row">
+            <span class="switch"><input type="checkbox" id="allowWrites"><i></i></span>
+            Allow writes
+          </label>
+          <button class="btn" id="runSql">Run <kbd>Ctrl ↵</kbd></button>
+        </div>
+        <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
+        <div class="editor-foot">Press Ctrl + Enter to run. Statement timeout: 5s.</div>
+      </div>
+      <div class="panel" id="sqlPanel" style="margin-top:20px">
+        <div class="status-line" id="sqlStatus"><span class="muted">Run a query to see results.</span></div>
+        <div class="table-wrap tall"><table id="sqlResult"></table></div>
+      </div>
+    </section>
+
+    <!-- ================= AUDIT ================= -->
+    <section id="audit" class="view">
+      <div class="page-head">
+        <div>
+          <h1>Audit Log</h1>
+          <p>The latest 100 changes, written automatically by the <code>trg_audit_*</code> triggers.</p>
+        </div>
+        <div class="actions"><button class="btn secondary" id="auditRefresh">Refresh</button></div>
+      </div>
+      <div class="panel">
+        <div class="table-wrap tall"><table id="auditTable"></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+// ---------- theme toggle ----------
+function syncThemeButton() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  $('themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+}
+$('themeToggle').onclick = () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('notifyhub-theme', next); } catch (e) {}
+  syncThemeButton();
+};
+syncThemeButton();
+
+let toastTimer;
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+const guard = (fn) => (...args) => fn(...args).catch((e) => toast(e.message));
+
+function ago(ts) {
+  const s = (Date.now() - new Date(ts)) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  if (s < 86400 * 7) return Math.floor(s / 86400) + 'd ago';
+  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+function bucket(ts) {
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = (day(new Date()) - day(new Date(ts))) / 864e5;
+  if (diff < 1) return 'Today';
+  if (diff < 2) return 'Yesterday';
+  if (diff < 7) return 'This week';
+  return 'Earlier';
+}
+function notice(el, ok, text) { el.className = 'notice ' + (ok ? 'ok' : 'bad'); el.textContent = text; }
+
+function table(el, columns, rows, fmt = {}) {
+  if (!rows.length) { el.innerHTML = '<tbody><tr><td class="empty-cell">No rows</td></tr></tbody>'; return; }
+  el.innerHTML =
+    '<thead><tr>' + columns.map(([, label, num]) => `<th class="${num ? 'num' : ''}">${esc(label)}</th>`).join('') + '</tr></thead>' +
+    '<tbody>' + rows.map((r) => '<tr>' + columns.map(([k, , num]) =>
+      `<td class="${num ? 'num' : ''}">${fmt[k] ? fmt[k](r[k], r) : esc(r[k] ?? '—')}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+const rate = (v) => `<span class="rate">${v == null ? '—' : v + '%'}<span class="track"><i style="width:${Math.min(100, v || 0)}%"></i></span></span>`;
+
+function noteHTML(n, { preview = false } = {}) {
+  const unread = n.status === 'unread';
+  return `
+    <article class="note ${unread ? 'unread' : 'read'} p-${esc(n.priority)}" ${unread && !preview ? `data-nid="${n.notification_id}" tabindex="0"` : ''}>
+      <h3>${esc(n.title) || '<span class="muted">Untitled</span>'}</h3>
+      ${n.body ? `<p>${esc(n.body)}</p>` : ''}
+      <div class="meta"><b>${esc(n.category)}</b><span>·</span><span>${esc(n.sender)}</span>${n.read_at ? `<span>· read ${ago(n.read_at)}</span>` : ''}</div>
+      <div class="side">
+        <time title="${esc(new Date(n.delivered_at).toLocaleString())}">${ago(n.delivered_at)}</time>
+        ${n.priority !== 'normal' ? `<span class="prio">${esc(n.priority)}</span>` : ''}
+        ${unread && !preview ? '<button class="mark" tabindex="-1">Mark read</button>' : ''}
+      </div>
+    </article>`;
+}
+
+// ---------- navigation ----------
+const loaders = {};
+function show(view) {
+  document.querySelectorAll('.nav button').forEach((b) =>
+    b.dataset.view === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === view));
+  if (loaders[view]) loaders[view]();
+  window.scrollTo({ top: 0 });
+}
+document.querySelectorAll('.nav button').forEach((b) => b.onclick = () => show(b.dataset.view));
+
+let USERS = [], CATS = [], INBOX = { unread: 0, items: [] }, SUBS = [];
+
+// ---------- inbox ----------
+const uid = () => $('inboxUser').value;
+
+function renderInbox() {
+  const filter = document.querySelector('input[name="filter"]:checked').value;
+  const items = filter === 'unread' ? INBOX.items.filter((n) => n.status === 'unread') : INBOX.items;
+  const user = USERS.find((u) => String(u.user_id) === uid());
+  $('inboxSub').textContent = `${user ? user.name + ' · ' : ''}${INBOX.unread ? INBOX.unread + ' unread' : 'All caught up'} · ${INBOX.items.length} total`;
+  $('navUnread').textContent = INBOX.unread || '';
+  $('readAll').disabled = !INBOX.unread;
+
+  if (!items.length) {
+    $('inboxList').innerHTML = filter === 'unread' && INBOX.items.length
+      ? '<div class="empty"><strong>Nothing unread</strong>You\'ve read everything here.</div>'
+      : '<div class="empty"><strong>No notifications yet</strong>Subscribe to a category to start receiving notices.</div>';
+    return;
+  }
+  let html = '', last = '';
+  for (const n of items) {
+    const b = bucket(n.delivered_at);
+    if (b !== last) { html += `<div class="group-label eyebrow">${b}</div>`; last = b; }
+    html += noteHTML(n);
+  }
+  $('inboxList').innerHTML = html;
+}
+
+function renderSubs() {
+  $('subsList').innerHTML = CATS.map((c) => `
+    <label class="switch-row">
+      <span class="name">${esc(c.name)}<small>${c.subscribers} subscriber${c.subscribers === 1 ? '' : 's'}</small></span>
+      <span class="switch"><input type="checkbox" data-cid="${c.category_id}" ${SUBS.includes(c.category_id) ? 'checked' : ''}><i></i></span>
+    </label>`).join('');
+}
+
+const loadInbox = guard(async () => {
+  const [inbox, settings] = await Promise.all([api(`/api/users/${uid()}/inbox`), api(`/api/users/${uid()}/settings`)]);
+  INBOX = inbox;
+  SUBS = settings.subscriptions;
+  $('inApp').checked = settings.in_app;
+  renderInbox();
+  renderSubs();
+});
+loaders.inbox = loadInbox;
+
+$('inboxList').addEventListener('click', guard(async (e) => {
+  const row = e.target.closest('.note[data-nid]');
+  if (!row) return;
+  await api(`/api/users/${uid()}/read/${row.dataset.nid}`, { method: 'POST' });
+  await loadInbox();
+}));
+$('inboxList').addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.note[data-nid]')) { e.preventDefault(); e.target.click(); }
+});
+document.querySelectorAll('input[name="filter"]').forEach((r) => r.onchange = renderInbox);
+$('inboxUser').onchange = loadInbox;
+$('readAll').onclick = guard(async () => {
+  await api(`/api/users/${uid()}/read-all`, { method: 'POST' });
+  await loadInbox();
+  toast('Marked everything as read');
+});
+$('inApp').onchange = guard(async () => {
+  await api(`/api/users/${uid()}/in-app`, { method: 'PUT', body: { enabled: $('inApp').checked } });
+  toast($('inApp').checked ? 'In-app notifications on' : 'In-app notifications muted (urgent still delivered)');
+});
+$('subsList').addEventListener('change', guard(async (e) => {
+  const cb = e.target.closest('input[data-cid]');
+  if (!cb) return;
+  const cid = Number(cb.dataset.cid);
+  try {
+    await api(`/api/users/${uid()}/subscriptions/${cid}`, { method: 'PUT', body: { subscribed: cb.checked } });
+  } catch (err) { cb.checked = !cb.checked; throw err; }
+  const cat = CATS.find((c) => c.category_id === cid);
+  cat.subscribers += cb.checked ? 1 : -1;
+  SUBS = cb.checked ? [...SUBS, cid] : SUBS.filter((x) => x !== cid);
+  renderSubs();
+  renderCats();
+  toast(`${cb.checked ? 'Subscribed to' : 'Unsubscribed from'} ${cat.name}`);
+}));
+
+// ---------- compose ----------
+const prio = () => document.querySelector('input[name="prio"]:checked').value;
+const chosenCats = () => [...document.querySelectorAll('#sendCats input:checked')].map((c) => Number(c.dataset.cid));
+
+function renderCats() {
+  const chosen = chosenCats();
+  $('sendCats').innerHTML = CATS.map((c) => `
+    <label class="chip"><input type="checkbox" data-cid="${c.category_id}" ${chosen.includes(c.category_id) ? 'checked' : ''}>
+      <span>${esc(c.name)} <em>${c.subscribers}</em></span></label>`).join('');
+  updatePreview();
+}
+function updatePreview() {
+  const ids = chosenCats();
+  $('reachNum').textContent = CATS.filter((c) => ids.includes(c.category_id)).reduce((a, c) => a + c.subscribers, 0);
+  const sender = USERS.find((u) => String(u.user_id) === $('sender').value);
+  const names = CATS.filter((c) => ids.includes(c.category_id)).map((c) => c.name);
+  $('preview').innerHTML = noteHTML({
+    status: 'unread', priority: prio(), title: $('title').value.trim() || 'Your title appears here',
+    body: $('body').value.trim(), category: names.length ? names.join(', ') : 'No category yet',
+    sender: sender ? sender.name : '', delivered_at: new Date().toISOString(),
+  }, { preview: true });
+}
+['title', 'body', 'sender'].forEach((id) => $(id).addEventListener('input', updatePreview));
+$('priority').addEventListener('change', updatePreview);
+$('sendCats').addEventListener('change', updatePreview);
+
+$('sendBtn').onclick = async () => {
+  const exp = $('expires').value;
+  $('sendBtn').disabled = true;
+  try {
+    const { results } = await api('/api/notifications', { method: 'POST', body: {
+      sender_id: Number($('sender').value), category_ids: chosenCats(),
+      title: $('title').value.trim(), body: $('body').value.trim(),
+      priority: prio(), expires_at: exp ? new Date(exp).toISOString() : null,
+    }});
+    const total = results.reduce((a, r) => a + r.recipients, 0);
+    const parts = results.map((r) => `${CATS.find((c) => c.category_id === r.category_id).name}: ${r.recipients}`).join(', ');
+    notice($('sendMsg'), true, `Sent. The fan-out trigger delivered it to ${total} recipient${total === 1 ? '' : 's'} (${parts}).`);
+    $('title').value = ''; $('body').value = ''; $('expires').value = '';
+    updatePreview();
+  } catch (e) {
+    notice($('sendMsg'), false, e.message);
+  } finally { $('sendBtn').disabled = false; }
+};
+
+// ---------- analytics ----------
+loaders.stats = guard(async () => {
+  const s = await api('/api/stats');
+  const fmt = (n) => Number(n).toLocaleString();
+  $('kpis').innerHTML = [
+    ['Users', fmt(s.totals.users)],
+    ['Notifications', fmt(s.totals.notifications)],
+    ['Deliveries', fmt(s.totals.deliveries)],
+    ['Read rate', s.totals.read_rate_pct == null ? '—' : `${s.totals.read_rate_pct}<small>%</small>`],
+  ].map(([l, v]) => `<div class="kpi"><div class="eyebrow">${l}</div><div class="v">${v}</div></div>`).join('');
+  table($('catTable'), [['category', 'Category'], ['subscribers', 'Subscribers', 1], ['notifications_sent', 'Sent', 1],
+    ['deliveries', 'Deliveries', 1], ['reads', 'Reads', 1], ['avg_hours_to_read', 'Avg hrs to read', 1], ['read_rate_pct', 'Read rate', 1]],
+    s.categories, { read_rate_pct: rate });
+  table($('deptTable'), [['department', 'Department'], ['users', 'Users', 1], ['deliveries', 'Deliveries', 1], ['read_rate_pct', 'Read rate', 1]],
+    s.departments, { read_rate_pct: rate });
+  table($('prioTable'), [['priority', 'Priority'], ['reads', 'Reads', 1], ['avg_hours', 'Avg hours', 1]],
+    s.priority, { priority: (v) => `<span class="prio p-${esc(v)}">${esc(v)}</span>` });
+  table($('senderTable'), [['sender', 'Sender'], ['role', 'Role'], ['posted', 'Posted', 1], ['reached', 'Reached', 1], ['read_rate_pct', 'Read rate', 1]],
+    s.senders, { read_rate_pct: rate, role: (v) => `<span class="muted" style="text-transform:capitalize">${esc(v)}</span>` });
+});
+
+// ---------- audit ----------
+loaders.audit = guard(async () => {
+  const rows = await api('/api/audit');
+  table($('auditTable'), [['log_id', '#', 1], ['logged_at', 'When'], ['table_name', 'Table'], ['action', 'Action'], ['record_id', 'Record', 1], ['details', 'Row data']],
+    rows, {
+      logged_at: (v) => `<span title="${esc(new Date(v).toLocaleString())}">${ago(v)}</span>`,
+      table_name: (v) => `<span class="mono">${esc(v)}</span>`,
+      action: (v) => `<span class="op op-${esc(v)}">${esc(v)}</span>`,
+      details: (v) => `<div class="details" title="${esc(v)}">${esc(v)}</div>`,
+    });
+});
+$('auditRefresh').onclick = () => loaders.audit();
+
+// ---------- SQL playground ----------
+const PRESETS = [
+  ['Inbox of user 7 (view)', `SELECT title, category, sender, priority, status, delivered_at\nFROM user_inbox\nWHERE user_id = 7\nORDER BY delivered_at DESC;`],
+  ['Unread count (function)', `SELECT user_id, name, unread_count(user_id) AS unread\nFROM users\nWHERE role = 'student'\nORDER BY unread DESC\nLIMIT 10;`],
+  ['Category leaderboard (window RANK)', `SELECT category, subscribers, notifications_sent, read_rate_pct,\n       RANK() OVER (ORDER BY read_rate_pct DESC NULLS LAST) AS rank\nFROM category_stats;`],
+  ['Daily volume + running total (window SUM)', `SELECT created_at::DATE AS day,\n       COUNT(*) AS sent,\n       SUM(COUNT(*)) OVER (ORDER BY created_at::DATE) AS running_total\nFROM notifications\nGROUP BY created_at::DATE\nORDER BY day;`],
+  ['Avg time-to-read by priority', `SELECT n.priority,\n       COUNT(nr.read_at) AS reads,\n       ROUND(AVG(EXTRACT(EPOCH FROM nr.read_at - nr.delivered_at) / 3600)::NUMERIC, 2) AS avg_hours\nFROM notifications n\nJOIN notification_recipients nr USING (notification_id)\nWHERE nr.read_at IS NOT NULL\nGROUP BY n.priority\nORDER BY avg_hours;`],
+  ['Students who never read anything (anti-join)', `SELECT u.user_id, u.name\nFROM users u\nWHERE u.role = 'student'\n  AND EXISTS     (SELECT 1 FROM notification_recipients nr WHERE nr.user_id = u.user_id)\n  AND NOT EXISTS (SELECT 1 FROM notification_recipients nr\n                  WHERE nr.user_id = u.user_id AND nr.status = 'read');`],
+  ['Notices read by ≥ 90% (GROUP BY + HAVING)', `SELECT n.title,\n       COUNT(*) AS recipients,\n       ROUND(100.0 * COUNT(nr.read_at) / COUNT(*), 1) AS read_pct\nFROM notifications n\nJOIN notification_recipients nr USING (notification_id)\nGROUP BY n.notification_id, n.title\nHAVING COUNT(nr.read_at)::NUMERIC / COUNT(*) >= 0.9\nORDER BY read_pct DESC;`],
+  ['Latest notice per category (ROW_NUMBER)', `SELECT category, title, created_at\nFROM (\n  SELECT c.name AS category, n.title, n.created_at,\n         ROW_NUMBER() OVER (PARTITION BY n.category_id ORDER BY n.created_at DESC) AS rn\n  FROM notifications n JOIN categories c USING (category_id)\n) t\nWHERE rn = 1;`],
+  ['Relational division: subscribed to ALL optional categories', `SELECT u.user_id, u.name\nFROM users u\nWHERE u.role = 'student'\n  AND NOT EXISTS (\n    SELECT c.category_id FROM categories c WHERE c.category_id IN (4, 5, 7, 8)\n    EXCEPT\n    SELECT s.category_id FROM subscriptions s WHERE s.user_id = u.user_id\n  );`],
+  ['EXPLAIN ANALYZE: index in action', `EXPLAIN ANALYZE\nSELECT * FROM notification_recipients\nWHERE user_id = 7 AND status = 'unread';`],
+  ['Trigger demo: student tries to send (fails)', `-- turn on "Allow writes" first\nSELECT * FROM send_notification(7, 1, 'hack', 'students cannot send');`],
+  ['Procedure demo: mark all read', `-- turn on "Allow writes" first\nCALL mark_all_read(7);`],
+  ['List triggers on each table', `SELECT event_object_table AS table_name, trigger_name, action_timing, event_manipulation\nFROM information_schema.triggers\nORDER BY table_name, trigger_name;`],
+  ['List indexes', `SELECT tablename, indexname, indexdef\nFROM pg_indexes\nWHERE schemaname = 'public'\nORDER BY tablename;`],
+];
+$('preset').innerHTML = PRESETS.map(([n], i) => `<option value="${i}">${esc(n)}</option>`).join('');
+$('preset').onchange = () => { $('sql').value = PRESETS[$('preset').value][1]; $('sql').focus(); };
+$('sql').value = PRESETS[0][1];
+
+const cell = (v) => v === null ? '<span class="null">NULL</span>' : esc(typeof v === 'object' ? JSON.stringify(v) : v);
+async function runSql() {
+  $('runSql').disabled = true;
+  try {
+    const r = await api('/api/query', { method: 'POST', body: { sql: $('sql').value, allowWrites: $('allowWrites').checked } });
+    const n = r.rows.length || r.rowCount || 0;
+    $('sqlStatus').className = 'status-line';
+    $('sqlStatus').innerHTML = `<span class="tag">${esc(r.command || 'OK')}</span><span>${n} row${n === 1 ? '' : 's'}</span>` +
+      `<span class="muted">${r.ms} ms</span><span class="muted" style="margin-left:auto">${$('allowWrites').checked ? 'Committed' : 'Rolled back (read-only)'}</span>`;
+    const cols = r.columns.map((c, i) => [i, c]);
+    table($('sqlResult'), cols, r.rows, Object.fromEntries(cols.map(([i]) => [i, cell])));
+  } catch (e) {
+    $('sqlStatus').className = 'status-line bad';
+    $('sqlStatus').textContent = e.message;
+    $('sqlResult').innerHTML = '';
+  } finally { $('runSql').disabled = false; }
+}
+$('runSql').onclick = runSql;
+$('sql').onkeydown = (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql(); }
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); }
+};
+
+// ---------- boot ----------
+guard(async function init() {
+  [USERS, CATS] = await Promise.all([api('/api/users'), api('/api/categories')]);
+  // The optgroup already says student/staff, so options only need the name (plus department where useful)
+  const opt = (u) => `<option value="${u.user_id}">${esc(u.name)}</option>`;
+  const optDept = (u) => `<option value="${u.user_id}">${esc(u.name)}${u.department ? ' · ' + esc(u.department) : ''}</option>`;
+  const named = USERS.filter((u) => u.user_id <= 20);
+  const staff = named.filter((u) => u.role !== 'student');
+  const students = named.filter((u) => u.role === 'student');
+  $('inboxUser').innerHTML = `<optgroup label="Students">${students.map(opt).join('')}</optgroup><optgroup label="Staff">${staff.map(opt).join('')}</optgroup>`;
+  $('sender').innerHTML = `<optgroup label="Staff">${staff.map(optDept).join('')}</optgroup>` +
+    `<optgroup label="Students (will be rejected)">${students.slice(0, 3).map(optDept).join('')}</optgroup>`;
+  renderCats();
+  await loadInbox();
+})();
+</script>
+</body>
+</html>
