@@ -91,8 +91,43 @@
   .nav .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; text-align: center; line-height: 18px; }
   .nav .count:empty { display: none; }
   .nav .short { display: none; }
-  .identity { margin-top: auto; padding: 16px 10px 0; border-top: 1px solid var(--rule); }
-  .identity .eyebrow { margin-bottom: 6px; }
+  .nav button[hidden] { display: none !important; }
+
+  /* Signed-in account (replaces the old "Viewing as" picker) */
+  .identity { margin-top: auto; padding: 16px 6px 0 10px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .identity .logout { flex-basis: 100%; }
+  .avatar {
+    width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent); font: 600 13px var(--sans); letter-spacing: .02em;
+  }
+  .who { flex: 1; min-width: 0; line-height: 1.3; }
+  .who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who small { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; }
+  .logout {
+    flex: none; height: 32px; padding: 0 10px; border: 1px solid var(--rule-2); border-radius: 7px;
+    background: var(--panel); color: var(--ink-2); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .logout:hover { color: var(--ink); background: var(--sunk); }
+  .from-me { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 7px; background: var(--sunk); }
+  .from-me .avatar { width: 28px; height: 28px; font-size: 11px; }
+
+  /* Sign-in / sign-up screen */
+  body.signed-out .app { display: none; }
+  body:not(.signed-out) .auth { display: none; }
+  body.booting .app, body.booting .auth { visibility: hidden; }
+  .auth { min-height: 100vh; display: grid; place-items: center; padding: 32px 16px; }
+  .auth-card { width: 100%; max-width: 400px; }
+  .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; font: 600 26px var(--serif); letter-spacing: -.01em; }
+  .auth-brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .auth-brand .theme-toggle { margin-left: auto; }
+  .auth h1 { margin: 0 0 6px; font: 500 30px/1.15 var(--serif); letter-spacing: -.015em; }
+  .auth .lede { margin: 0 0 22px; color: var(--muted); }
+  .auth .panel-body { padding: 24px; }
+  .auth .segmented { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin-bottom: 22px; }
+  .auth .segmented label { justify-content: center; padding: 7px 12px; }
+  .auth .btn { width: 100%; justify-content: center; height: 40px; margin-top: 22px; }
+  .auth form[hidden] { display: none; }
+  .auth .foot { margin-top: 18px; text-align: center; font-size: 12.5px; color: var(--muted); }
 
   main { min-width: 0; width: 100%; max-width: 1180px; padding: 40px 48px 72px; }
   .view { display: none; }
@@ -284,14 +319,13 @@
     /* Header: brand + theme toggle, then the "viewing as" picker */
     .sidebar { position: static; min-width: 0; height: auto; padding: 14px 16px; gap: 12px; border-right: 0; border-bottom: 1px solid var(--rule); }
     .brand { padding: 0; font-size: 21px; }
-    .identity { margin: 0; padding: 0; border: 0; display: flex; align-items: center; gap: 10px; }
-    .identity .eyebrow { margin: 0; white-space: nowrap; }
-    .identity select { flex: 1; min-width: 0; width: auto; }
+    .identity { margin: 0; padding: 0; border: 0; flex-wrap: nowrap; }
+    .identity .logout { flex-basis: auto; }
 
     /* Navigation becomes a fixed bottom tab bar with all 5 sections visible */
     .nav {
       position: fixed; z-index: 20; left: 0; right: 0; bottom: 0;
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+      display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0;
       padding: 0 4px env(safe-area-inset-bottom); background: var(--panel); border-top: 1px solid var(--rule);
     }
     .nav button {
@@ -306,6 +340,9 @@
     .nav .count { position: absolute; top: 7px; left: calc(50% + 6px); margin: 0; min-width: 17px; padding: 0 4px; font-size: 10px; line-height: 16px; }
 
     main { padding: 24px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom)); }
+    /* Students only have the Inbox, so no tab bar at all */
+    body.one-view { --tabbar-h: 0px; }
+    body.one-view .nav { display: none; }
     .toast { bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom)); }
     .page-head { margin-bottom: 20px; }
     .page-head h1 { font-size: 30px; }
@@ -329,12 +366,71 @@
   }
 </style>
 </head>
-<body>
+<body class="booting signed-out">
+<!-- ================= SIGN IN / SIGN UP ================= -->
+<section class="auth" aria-label="Sign in">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <i></i>NotifyHub
+      <button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
+        <svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+    <h1 id="authTitle">Welcome back</h1>
+    <p class="lede" id="authLede">Sign in with your college email to see your notices.</p>
+    <div class="panel">
+      <div class="panel-body">
+        <div class="segmented" role="tablist" aria-label="Sign in or sign up">
+          <input type="radio" name="authMode" id="modeIn" value="in" checked><label for="modeIn">Sign in</label>
+          <input type="radio" name="authMode" id="modeUp" value="up"><label for="modeUp">Sign up</label>
+        </div>
+
+        <form id="signinForm" novalidate>
+          <div class="field">
+            <label for="inEmail">Email</label>
+            <input class="input" type="email" id="inEmail" autocomplete="username" placeholder="you@college.edu" required>
+          </div>
+          <div class="field">
+            <label for="inPassword">Password</label>
+            <input class="input" type="password" id="inPassword" autocomplete="current-password" required>
+          </div>
+          <button class="btn" type="submit" id="signinBtn">Sign in</button>
+          <div id="signinMsg" class="notice" role="alert"></div>
+        </form>
+
+        <form id="signupForm" novalidate hidden>
+          <div class="field">
+            <label for="upName">Full name</label>
+            <input class="input" type="text" id="upName" autocomplete="name" maxlength="100" required>
+          </div>
+          <div class="field">
+            <label for="upEmail">College email</label>
+            <input class="input" type="email" id="upEmail" autocomplete="email" maxlength="150" placeholder="you@college.edu" required>
+          </div>
+          <div class="field">
+            <label for="upDept">Department</label>
+            <select class="input" id="upDept" required></select>
+          </div>
+          <div class="field">
+            <label for="upCode">Student access code</label>
+            <input class="input" type="password" id="upCode" autocomplete="off" required>
+            <div class="hint">Ask your admin for it. Only students can sign up; staff accounts are set up by the college.</div>
+          </div>
+          <button class="btn" type="submit" id="signupBtn">Create student account</button>
+          <div id="signupMsg" class="notice" role="alert"></div>
+        </form>
+      </div>
+    </div>
+    <p class="foot">Students see their inbox. Faculty can also post notices. Admins see everything.</p>
+  </div>
+</section>
+
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
       <i></i>NotifyHub
-      <button class="theme-toggle" id="themeToggle" aria-label="Switch to dark mode" title="Switch theme">
+      <button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
         <svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
         <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       </button>
@@ -362,8 +458,9 @@
       </button>
     </nav>
     <div class="identity">
-      <div class="eyebrow">Viewing as</div>
-      <select class="input" id="inboxUser" aria-label="Viewing as"></select>
+      <span class="avatar" id="meAvatar" aria-hidden="true"></span>
+      <div class="who"><b id="meName"></b><small id="meRole"></small></div>
+      <button class="logout" type="button" id="logoutBtn">Log out</button>
     </div>
   </aside>
 
@@ -415,9 +512,9 @@
         <div class="panel">
           <div class="panel-body">
             <div class="field">
-              <label for="sender">From</label>
-              <select class="input" id="sender"></select>
-              <div class="hint">Students can't post. Pick one to watch <code>trg_check_sender_role</code> reject it.</div>
+              <div class="label">From</div>
+              <div class="from-me"><span class="avatar" id="fromAvatar" aria-hidden="true"></span><span id="fromName"></span></div>
+              <div class="hint">Notices are always sent as the signed-in account. Students can't post: the server blocks them, and the <code>trg_check_sender_role</code> trigger would reject them anyway.</div>
             </div>
             <div class="field">
               <div class="label">Categories</div>
@@ -552,6 +649,8 @@ async function api(url, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  // Session expired or signed out elsewhere: go back to the sign-in screen
+  if (res.status === 401 && !url.startsWith('/api/auth/')) showAuth();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
@@ -559,14 +658,15 @@ async function api(url, opts = {}) {
 // ---------- theme toggle ----------
 function syncThemeButton() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  $('themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  document.querySelectorAll('.theme-toggle').forEach((b) =>
+    b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'));
 }
-$('themeToggle').onclick = () => {
+document.querySelectorAll('.theme-toggle').forEach((b) => b.onclick = () => {
   const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   try { localStorage.setItem('notifyhub-theme', next); } catch (e) {}
   syncThemeButton();
-};
+});
 syncThemeButton();
 
 let toastTimer;
@@ -624,6 +724,7 @@ function noteHTML(n, { preview = false } = {}) {
 // ---------- navigation ----------
 const loaders = {};
 function show(view) {
+  if (ME && !ME.views.includes(view)) view = 'inbox';
   document.querySelectorAll('.nav button').forEach((b) =>
     b.dataset.view === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === view));
@@ -632,16 +733,13 @@ function show(view) {
 }
 document.querySelectorAll('.nav button').forEach((b) => b.onclick = () => show(b.dataset.view));
 
-let USERS = [], CATS = [], INBOX = { unread: 0, items: [] }, SUBS = [];
+let ME = null, CATS = [], INBOX = { unread: 0, items: [] }, SUBS = [];
 
-// ---------- inbox ----------
-const uid = () => $('inboxUser').value;
-
+// ---------- inbox (always the signed-in user's own) ----------
 function renderInbox() {
   const filter = document.querySelector('input[name="filter"]:checked').value;
   const items = filter === 'unread' ? INBOX.items.filter((n) => n.status === 'unread') : INBOX.items;
-  const user = USERS.find((u) => String(u.user_id) === uid());
-  $('inboxSub').textContent = `${user ? user.name + ' · ' : ''}${INBOX.unread ? INBOX.unread + ' unread' : 'All caught up'} · ${INBOX.items.length} total`;
+  $('inboxSub').textContent = `${INBOX.unread ? INBOX.unread + ' unread' : 'All caught up'} · ${INBOX.items.length} total`;
   $('navUnread').textContent = INBOX.unread || '';
   $('readAll').disabled = !INBOX.unread;
 
@@ -669,7 +767,7 @@ function renderSubs() {
 }
 
 const loadInbox = guard(async () => {
-  const [inbox, settings] = await Promise.all([api(`/api/users/${uid()}/inbox`), api(`/api/users/${uid()}/settings`)]);
+  const [inbox, settings] = await Promise.all([api('/api/me/inbox'), api('/api/me/settings')]);
   INBOX = inbox;
   SUBS = settings.subscriptions;
   $('inApp').checked = settings.in_app;
@@ -681,21 +779,20 @@ loaders.inbox = loadInbox;
 $('inboxList').addEventListener('click', guard(async (e) => {
   const row = e.target.closest('.note[data-nid]');
   if (!row) return;
-  await api(`/api/users/${uid()}/read/${row.dataset.nid}`, { method: 'POST' });
+  await api(`/api/me/read/${row.dataset.nid}`, { method: 'POST' });
   await loadInbox();
 }));
 $('inboxList').addEventListener('keydown', (e) => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.note[data-nid]')) { e.preventDefault(); e.target.click(); }
 });
 document.querySelectorAll('input[name="filter"]').forEach((r) => r.onchange = renderInbox);
-$('inboxUser').onchange = loadInbox;
 $('readAll').onclick = guard(async () => {
-  await api(`/api/users/${uid()}/read-all`, { method: 'POST' });
+  await api('/api/me/read-all', { method: 'POST' });
   await loadInbox();
   toast('Marked everything as read');
 });
 $('inApp').onchange = guard(async () => {
-  await api(`/api/users/${uid()}/in-app`, { method: 'PUT', body: { enabled: $('inApp').checked } });
+  await api('/api/me/in-app', { method: 'PUT', body: { enabled: $('inApp').checked } });
   toast($('inApp').checked ? 'In-app notifications on' : 'In-app notifications muted (urgent still delivered)');
 });
 $('subsList').addEventListener('change', guard(async (e) => {
@@ -703,7 +800,7 @@ $('subsList').addEventListener('change', guard(async (e) => {
   if (!cb) return;
   const cid = Number(cb.dataset.cid);
   try {
-    await api(`/api/users/${uid()}/subscriptions/${cid}`, { method: 'PUT', body: { subscribed: cb.checked } });
+    await api(`/api/me/subscriptions/${cid}`, { method: 'PUT', body: { subscribed: cb.checked } });
   } catch (err) { cb.checked = !cb.checked; throw err; }
   const cat = CATS.find((c) => c.category_id === cid);
   cat.subscribers += cb.checked ? 1 : -1;
@@ -727,15 +824,14 @@ function renderCats() {
 function updatePreview() {
   const ids = chosenCats();
   $('reachNum').textContent = CATS.filter((c) => ids.includes(c.category_id)).reduce((a, c) => a + c.subscribers, 0);
-  const sender = USERS.find((u) => String(u.user_id) === $('sender').value);
   const names = CATS.filter((c) => ids.includes(c.category_id)).map((c) => c.name);
   $('preview').innerHTML = noteHTML({
     status: 'unread', priority: prio(), title: $('title').value.trim() || 'Your title appears here',
     body: $('body').value.trim(), category: names.length ? names.join(', ') : 'No category yet',
-    sender: sender ? sender.name : '', delivered_at: new Date().toISOString(),
+    sender: ME ? ME.name : '', delivered_at: new Date().toISOString(),
   }, { preview: true });
 }
-['title', 'body', 'sender'].forEach((id) => $(id).addEventListener('input', updatePreview));
+['title', 'body'].forEach((id) => $(id).addEventListener('input', updatePreview));
 $('priority').addEventListener('change', updatePreview);
 $('sendCats').addEventListener('change', updatePreview);
 
@@ -744,7 +840,7 @@ $('sendBtn').onclick = async () => {
   $('sendBtn').disabled = true;
   try {
     const { results } = await api('/api/notifications', { method: 'POST', body: {
-      sender_id: Number($('sender').value), category_ids: chosenCats(),
+      category_ids: chosenCats(),
       title: $('title').value.trim(), body: $('body').value.trim(),
       priority: prio(), expires_at: exp ? new Date(exp).toISOString() : null,
     }});
@@ -836,20 +932,91 @@ $('sql').onkeydown = (e) => {
   if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); }
 };
 
-// ---------- boot ----------
-guard(async function init() {
-  [USERS, CATS] = await Promise.all([api('/api/users'), api('/api/categories')]);
-  // The optgroup already says student/staff, so options only need the name (plus department where useful)
-  const opt = (u) => `<option value="${u.user_id}">${esc(u.name)}</option>`;
-  const optDept = (u) => `<option value="${u.user_id}">${esc(u.name)}${u.department ? ' · ' + esc(u.department) : ''}</option>`;
-  const named = USERS.filter((u) => u.user_id <= 20);
-  const staff = named.filter((u) => u.role !== 'student');
-  const students = named.filter((u) => u.role === 'student');
-  $('inboxUser').innerHTML = `<optgroup label="Students">${students.map(opt).join('')}</optgroup><optgroup label="Staff">${staff.map(opt).join('')}</optgroup>`;
-  $('sender').innerHTML = `<optgroup label="Staff">${staff.map(optDept).join('')}</optgroup>` +
-    `<optgroup label="Students (will be rejected)">${students.slice(0, 3).map(optDept).join('')}</optgroup>`;
-  renderCats();
-  await loadInbox();
+// ---------- sign in / sign up ----------
+const initials = (name) => name.replace(/^(Dr|Prof|Mr|Ms|Mrs)\.?\s+/i, '').split(/\s+/).filter(Boolean)
+  .slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+
+function showAuth() {
+  ME = null;
+  document.body.classList.add('signed-out');
+  document.body.classList.remove('booting', 'one-view');
+  $('inPassword').value = '';
+  setTimeout(() => $('inEmail').focus(), 0);
+}
+
+function setAuthMode(mode) {
+  const up = mode === 'up';
+  $('signinForm').hidden = up;
+  $('signupForm').hidden = !up;
+  $('authTitle').textContent = up ? 'Create your account' : 'Welcome back';
+  $('authLede').textContent = up ? 'For students. You\'ll need the student access code from your admin.'
+                                 : 'Sign in with your college email to see your notices.';
+  if (up && !$('upDept').options.length) {
+    api('/api/auth/departments').then((ds) => {
+      $('upDept').innerHTML = '<option value="">Choose…</option>' + ds.map((d) => `<option value="${d.dept_id}">${esc(d.name)}</option>`).join('');
+    }).catch((e) => notice($('signupMsg'), false, e.message));
+  }
+}
+document.querySelectorAll('input[name="authMode"]').forEach((r) => r.onchange = () => setAuthMode(r.value));
+
+async function submitAuth(btn, msgEl, url, body) {
+  btn.disabled = true;
+  msgEl.className = 'notice';
+  try {
+    startApp(await api(url, { method: 'POST', body }));
+  } catch (e) {
+    notice(msgEl, false, e.message);
+  } finally { btn.disabled = false; }
+}
+$('signinForm').onsubmit = (e) => {
+  e.preventDefault();
+  submitAuth($('signinBtn'), $('signinMsg'), '/api/auth/login',
+    { email: $('inEmail').value, password: $('inPassword').value });
+};
+$('signupForm').onsubmit = (e) => {
+  e.preventDefault();
+  submitAuth($('signupBtn'), $('signupMsg'), '/api/auth/signup', {
+    name: $('upName').value, email: $('upEmail').value, dept_id: Number($('upDept').value), code: $('upCode').value,
+  });
+};
+$('logoutBtn').onclick = async () => {
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  showAuth();
+  toast('Signed out');
+};
+
+// ---------- start the app for the signed-in user ----------
+async function startApp(me) {
+  ME = me;
+  document.body.classList.remove('signed-out', 'booting');
+  document.body.classList.toggle('one-view', me.views.length === 1);
+  $('signinForm').reset();
+  $('signupForm').reset();
+
+  // Account block + compose "From"
+  const roleLine = me.role + (me.department ? ' · ' + me.department : '');
+  $('meAvatar').textContent = $('fromAvatar').textContent = initials(me.name);
+  $('meName').textContent = $('fromName').textContent = me.name;
+  $('meRole').textContent = roleLine;
+  $('meName').title = `${me.name} (${me.email})`;
+
+  // Only the pages this role may open (the server enforces the same rules)
+  document.querySelectorAll('.nav button').forEach((b) => { b.hidden = !me.views.includes(b.dataset.view); });
+
+  try {
+    CATS = await api('/api/categories');
+    renderCats();
+  } catch (e) { toast(e.message); }
+  show('inbox');   // also loads the inbox
+}
+
+// ---------- boot: already signed in? ----------
+(async function boot() {
+  try {
+    startApp(await api('/api/auth/me'));
+  } catch {
+    showAuth();
+  }
 })();
 </script>
 </body>

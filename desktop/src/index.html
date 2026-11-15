@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NotifyHub</title>
+<script src="config.js"></script>
+<style>
+  :root {
+    --paper: #fbf8f1; --panel: #fffefa; --sunk: #f3eee3; --ink: #1f1d19; --ink-2: #4b4740; --muted: #857e70;
+    --rule: #e7e0d2; --rule-2: #d9d0bf; --accent: #c8442b; --accent-soft: #f7e5dc; --bad: #b3261e;
+    --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+    --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151412; --panel: #1c1b18; --sunk: #24231f; --ink: #ece8df; --ink-2: #bdb8ad; --muted: #8a857a;
+      --rule: #2e2c27; --rule-2: #3a3731; --accent: #e0644a; --accent-soft: #3a231c; --bad: #f2867c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; padding: 24px 16px;
+    background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width: 100%; max-width: 420px; padding: 28px; border: 1px solid var(--rule); border-radius: 14px;
+    background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font: 600 22px var(--serif); letter-spacing: -.01em; }
+  .brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .sub { margin: 4px 0 22px; color: var(--muted); }
+  label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--ink-2); }
+  input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--rule-2); border-radius: 8px;
+    background: var(--paper); color: var(--ink); font: 14px var(--mono);
+  }
+  input:focus { outline: none; border-color: var(--ink); }
+  .hint { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .preset {
+    padding: 4px 10px; border: 1px solid var(--rule-2); border-radius: 999px; background: var(--sunk);
+    color: var(--ink-2); font: 12.5px var(--sans); cursor: pointer;
+  }
+  .preset:hover { color: var(--ink); border-color: var(--ink-2); }
+  .actions { display: flex; gap: 8px; margin-top: 20px; }
+  button.btn {
+    flex: 1; padding: 10px 14px; border: 1px solid transparent; border-radius: 8px;
+    background: var(--ink); color: var(--paper); font: 600 14px var(--sans); cursor: pointer;
+  }
+  button.btn.secondary { background: var(--panel); color: var(--ink); border-color: var(--rule-2); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .spinner {
+    width: 18px; height: 18px; flex: none; border: 2px solid var(--rule-2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .server { margin-top: 10px; font: 12.5px var(--mono); color: var(--muted); word-break: break-all; }
+  .error { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--bad); font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><i></i>NotifyHub</div>
+    <p class="sub">Campus notification system</p>
+
+    <!-- Shown while connecting -->
+    <section id="connecting" hidden>
+      <div class="status"><div class="spinner"></div><strong id="statusText">Connecting…</strong></div>
+      <p class="hint" id="slowHint" hidden>Free Render servers sleep when idle and can take up to a minute to wake up.</p>
+      <div class="server" id="serverText"></div>
+      <div class="actions"><button class="btn secondary" id="cancelBtn">Change server</button></div>
+    </section>
+
+    <!-- Server picker -->
+    <form id="picker" hidden>
+      <label for="url">Server address</label>
+      <input id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false"
+             placeholder="https://notifyhub-xxxx.onrender.com">
+      <p class="hint">The NotifyHub website address: your Render URL, or this PC while running <code>npm start</code>.</p>
+      <div class="presets" id="presets">
+        <button type="button" class="preset" data-url="http://localhost:3000">This PC (localhost:3000)</button>
+      </div>
+      <div class="error" id="error" hidden></div>
+      <div class="actions"><button class="btn" type="submit">Connect</button></div>
+    </form>
+  </main>
+
+<script>
+  const KEY = 'notifyhub-server';
+  const WAIT_LIMIT_MS = 90000;  // Render's free tier can take ~60 s to wake up
+  const $ = (id) => document.getElementById(id);
+  let attempt = 0;               // bumped to cancel an in-progress connect
+
+  function read() { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
+  function save(url) { try { localStorage.setItem(KEY, url); } catch (e) {} }
+
+  // Accepts "notifyhub.onrender.com", "localhost:3000", full URLs… and returns "https://host[:port]".
+  function normalise(raw) {
+    let s = (raw || '').trim();
+    if (!s) return null;
+    if (!/^https?:\/\//i.test(s)) s = (/^(localhost|127\.|\[::1\])/i.test(s) ? 'http://' : 'https://') + s;
+    try { const u = new URL(s); return u.origin; } catch (e) { return null; }
+  }
+
+  function showPicker(message) {
+    attempt++;
+    $('connecting').hidden = true;
+    $('picker').hidden = false;
+    $('url').value = read() || window.NOTIFYHUB_DEFAULT_SERVER || '';
+    $('error').hidden = !message;
+    $('error').textContent = message || '';
+    $('url').focus();
+  }
+
+  // /health is public and doesn't touch the database. "no-cors" is enough: we only need to know
+  // that the server answered, not read the reply.
+  async function ping(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try { await fetch(url + '/health', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal }); return true; }
+    catch (e) { return false; }
+    finally { clearTimeout(timer); }
+  }
+
+  async function connect(url) {
+    const me = ++attempt;
+    $('picker').hidden = true;
+    $('connecting').hidden = false;
+    $('statusText').textContent = 'Connecting…';
+    $('serverText').textContent = url;
+    $('slowHint').hidden = true;
+    const started = Date.now();
+    const slow = setTimeout(() => { if (me === attempt) { $('slowHint').hidden = false; $('statusText').textContent = 'Waking up the server…'; } }, 4000);
+
+    while (me === attempt) {
+      if (await ping(url)) {
+        if (me !== attempt) return;
+        clearTimeout(slow);
+        save(url);
+        location.replace(url + '/');   // the web app takes over from here
+        return;
+      }
+      if (Date.now() - started > WAIT_LIMIT_MS) break;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+    clearTimeout(slow);
+    if (me === attempt) showPicker(`Couldn't reach ${url}. Check the address and your internet connection, or start the server.`);
+  }
+
+  $('picker').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = normalise($('url').value);
+    if (!url) { showPicker('Enter a server address, e.g. https://notifyhub-xxxx.onrender.com'); return; }
+    connect(url);
+  });
+  $('presets').addEventListener('click', (e) => {
+    const b = e.target.closest('.preset');
+    if (b) { $('url').value = b.dataset.url; $('url').focus(); }
+  });
+  $('cancelBtn').addEventListener('click', () => showPicker());
+
+  // Start: "?change=1" (from the menu) always shows the picker; otherwise reconnect to the last server.
+  const changing = new URLSearchParams(location.search).has('change');
+  const known = normalise(read() || window.NOTIFYHUB_DEFAULT_SERVER);
+  if (!changing && known) connect(known); else showPicker();
+</script>
+</body>
+</html>
